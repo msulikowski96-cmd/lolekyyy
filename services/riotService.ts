@@ -1,13 +1,8 @@
+
 import { type SummonerData, type Match } from '../types';
 
-const RIOT_API_KEY = process.env.RIOT_API_KEY as string;
 const DDRAGON_VERSION = '14.14.1'; // Use a recent, fixed version for stability
 
-if (!RIOT_API_KEY) {
-    console.error("Riot API Key is missing. Please set the RIOT_API_KEY environment variable.");
-}
-
-// FIX: Export REGIONS and RegionKey to be used across the application for type safety.
 export const REGIONS = {
     NA: { platform: 'na1', regional: 'americas' },
     EUW: { platform: 'euw1', regional: 'europe' },
@@ -24,38 +19,40 @@ export const REGIONS = {
 
 export type RegionKey = keyof typeof REGIONS;
 
-const apiFetch = async (url: string) => {
+const apiFetch = async (url: string, apiKey: string) => {
     const response = await fetch(url, {
-        headers: { 'X-Riot-Token': RIOT_API_KEY }
+        headers: { 'X-Riot-Token': apiKey }
     });
     if (!response.ok) {
-        if (response.status === 403) throw new Error("Invalid or expired Riot API Key.");
+        if (response.status === 401 || response.status === 403) {
+             throw new Error("Invalid or expired Riot API Key. Please provide a valid key.");
+        }
         if (response.status === 404) throw new Error("Player not found.");
         throw new Error(`Riot API request failed with status: ${response.status}`);
     }
     return response.json();
 };
 
-export const fetchPlayerStats = async (gameName: string, tagLine: string, region: RegionKey): Promise<SummonerData> => {
-    if (!RIOT_API_KEY) {
-        throw new Error("Riot API key is not configured. The application administrator needs to set it up.");
+export const fetchPlayerStats = async (gameName: string, tagLine: string, region: RegionKey, apiKey: string): Promise<SummonerData> => {
+    if (!apiKey) {
+        throw new Error("Riot API key is not provided. The application needs it to fetch data.");
     }
     
     const { platform, regional } = REGIONS[region];
 
     // 1. Get Account PUUID
     const accountUrl = `https://${regional}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
-    const account = await apiFetch(accountUrl);
+    const account = await apiFetch(accountUrl, apiKey);
     const puuid = account.puuid;
 
     // 2. Get Summoner Data (ID, Level, Icon)
     const summonerUrl = `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`;
-    const summoner = await apiFetch(summonerUrl);
+    const summoner = await apiFetch(summonerUrl, apiKey);
     const { id: summonerId, profileIconId, summonerLevel } = summoner;
 
     // 3. Get Ranked Data
     const leagueUrl = `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}`;
-    const leagueEntries = await apiFetch(leagueUrl);
+    const leagueEntries = await apiFetch(leagueUrl, apiKey);
     const soloQueue = leagueEntries.find((e: any) => e.queueType === 'RANKED_SOLO_5x5');
     const rank = soloQueue ? `${soloQueue.tier} ${soloQueue.rank}` : 'Unranked';
     const totalGames = soloQueue ? soloQueue.wins + soloQueue.losses : 0;
@@ -63,11 +60,11 @@ export const fetchPlayerStats = async (gameName: string, tagLine: string, region
 
     // 4. Get Match History (last 5 games)
     const matchIdsUrl = `https://${regional}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?count=5`;
-    const matchIds = await apiFetch(matchIdsUrl);
+    const matchIds = await apiFetch(matchIdsUrl, apiKey);
 
     // 5. Get Match Details for each match
     const matchPromises = matchIds.map((matchId: string) => 
-        apiFetch(`https://${regional}.api.riotgames.com/lol/match/v5/matches/${matchId}`)
+        apiFetch(`https://${regional}.api.riotgames.com/lol/match/v5/matches/${matchId}`, apiKey)
     );
     const matchDetailsList = await Promise.all(matchPromises);
     
