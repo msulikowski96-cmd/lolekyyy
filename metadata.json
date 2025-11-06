@@ -1,0 +1,5 @@
+{
+  "name": "LoL Performance Analyst AI",
+  "description": "Enter a League of Legends player's name and tag to get their stats and receive personalized AI-driven coaching from Gemini on how to improve.",
+  "requestFramePermissions": []
+}
